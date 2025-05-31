@@ -1,6 +1,6 @@
-# API Caller Tool Documentation
+# Simple API Caller Tool
 
-A simple Java-based API testing tool designed for testers who need to perform API calls 
+A simple template-based API calling tool designed mainly for testers who need to perform API calls 
 without coding knowledge.
 
 - [Overview](#overview)
