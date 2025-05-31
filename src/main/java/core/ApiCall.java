@@ -6,7 +6,6 @@ import org.apache.hc.client5.http.classic.methods.*;
 import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
 import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
@@ -31,8 +30,9 @@ public class ApiCall {
     private String authToken;
     private String apiKey;
     private String apiKeyHeaderName;
-    private Map<String, String> requestOauthParams = new HashMap<>();
+    List<NameValuePair> requestOauthParams = new ArrayList<>();
     HttpMethod method;
+    private static final String LINE_SEPARATOR = System.lineSeparator();
 
     public enum HttpMethod {
         GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -105,16 +105,18 @@ public class ApiCall {
             return (T) this;
         }
 
-        public T apiKeyAuth(String key, String headerName) {
+        public T apiKeyAuth(String headerName, String key) {
             authType = AuthType.API_KEY;
-            apiKey = key;
             apiKeyHeaderName = headerName;
+            apiKey = key;
             return (T) this;
         }
 
         public T OAuth2(Map<String, String> oauthParams) {
+
             authType = AuthType.OAUTH2;
-            requestOauthParams = oauthParams;
+            oauthParams.forEach((param, value) -> requestOauthParams.add(new BasicNameValuePair(param, value)));
+
             return (T) this;
         }
 
@@ -122,9 +124,6 @@ public class ApiCall {
             ApiCall.this.execute();
         }
 
-        public Response executeOAuth2TokenRequest() {
-            return ApiCall.this.executeOAuth2TokenRequest();
-        }
     }
 
     public class CallDetailsWithBody extends CallDetails<CallDetailsWithBody> {
@@ -134,7 +133,7 @@ public class ApiCall {
         }
     }
 
-    public void execute() {
+    private void execute() {
 
         try (CloseableHttpClient httpClient = createHttpClient()) {
 
@@ -147,7 +146,6 @@ public class ApiCall {
 
             addAuthHeaders(request);
 
-            // Add body if applicable
             if (requestBody != null && (method == HttpMethod.POST || method == HttpMethod.PUT || method == HttpMethod.PATCH)) {
 
                 String contentType;
@@ -161,20 +159,15 @@ public class ApiCall {
                 request.setEntity(entity);
             }
 
-            Response response = httpClient.execute(request, resp -> {
+            httpClient.execute(request, resp -> {
+                System.out.println();
                 Response theResponse = new Response(resp);
-                System.out.println("=== GET Example Response ===");
+                System.out.format("=== Executing %s %s ===", request.getMethod(), request.getRequestUri()).println(LINE_SEPARATOR);
                 System.out.println(theResponse);
-                System.out.println("============================\n");
-                return theResponse;
+                System.out.println();
+                System.out.println("============================");
+                return null;
             });
-
-            // Optional: Check if response was successful (status code 2xx)
-            if (response.isSuccess()) {
-                System.out.println("Request was successful!");
-            } else {
-                System.out.println("Request failed!");
-            }
 
         } catch (IOException | URISyntaxException e) {
             System.err.println("Error executing request: " + e.getMessage());
@@ -192,7 +185,6 @@ public class ApiCall {
     }
 
     private CloseableHttpClient createHttpClient() {
-        // Create the appropriate client based on auth type
         if (authType == AuthType.BASIC) {
             BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
             credentialsProvider.setCredentials(
@@ -221,60 +213,13 @@ public class ApiCall {
 
     private void addAuthHeaders(ClassicHttpRequest request) {
         switch (authType) {
-            case BEARER:
-                request.addHeader("Authorization", "Bearer " + authToken);
-                break;
-            case API_KEY:
-                request.addHeader(apiKeyHeaderName, apiKey);
-                break;
-            case OAUTH2:
-                // This would typically involve getting a token first
-                if (requestOauthParams.containsKey("access_token")) {
-                    request.addHeader("Authorization", "Bearer " + requestOauthParams.get("access_token"));
-                }
-                break;
-            default:
-                // No additional headers needed
-                break;
-        }
-    }
-
-    public Response executeOAuth2TokenRequest() {
-        if (authType != AuthType.OAUTH2 || !requestOauthParams.containsKey("token_url")) {
-            throw new IllegalStateException("OAuth2 not properly configured");
-        }
-
-        HttpPost tokenRequest = new HttpPost(requestOauthParams.get("token_url"));
-        tokenRequest.setHeader("Content-Type", "application/x-www-form-urlencoded");
-
-        List<NameValuePair> form = new ArrayList<>();
-        form.add(new BasicNameValuePair("grant_type", requestOauthParams.getOrDefault("grant_type", "client_credentials")));
-
-        if (requestOauthParams.containsKey("client_id")) {
-            form.add(new BasicNameValuePair("client_id", requestOauthParams.get("client_id")));
-        }
-
-        if (requestOauthParams.containsKey("client_secret")) {
-            form.add(new BasicNameValuePair("client_secret", requestOauthParams.get("client_secret")));
-        }
-
-        if (requestOauthParams.containsKey("username") && requestOauthParams.containsKey("password")) {
-            form.add(new BasicNameValuePair("username", requestOauthParams.get("username")));
-            form.add(new BasicNameValuePair("password", requestOauthParams.get("password")));
-        }
-
-        if (requestOauthParams.containsKey("scope")) {
-            form.add(new BasicNameValuePair("scope", requestOauthParams.get("scope")));
-        }
-
-        tokenRequest.setEntity(new UrlEncodedFormEntity(form));
-
-        try (CloseableHttpClient httpClient = HttpClients.createDefault();
-             CloseableHttpResponse response = httpClient.execute(tokenRequest)) {
-
-            return new Response(response);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            case BEARER -> request.addHeader("Authorization", "Bearer " + authToken);
+            case API_KEY -> request.addHeader(apiKeyHeaderName, apiKey);
+            case OAUTH2 -> {
+                request.setHeader("Content-Type", "application/x-www-form-urlencoded");
+                request.setEntity(new UrlEncodedFormEntity(requestOauthParams));
+            }
+            default -> {}
         }
     }
 
@@ -317,14 +262,15 @@ public class ApiCall {
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
-            sb.append("Status Code: ").append(statusCode).append("\n\n");
 
-            sb.append("Headers:\n");
+            sb.append("Response Code: ").append(statusCode).append(LINE_SEPARATOR).append(LINE_SEPARATOR);
+
+            sb.append("Response Headers:").append(LINE_SEPARATOR).append(LINE_SEPARATOR);
             for (Map.Entry<String, String> header : headers.entrySet()) {
-                sb.append(header.getKey()).append(": ").append(header.getValue()).append("\n");
+                sb.append(header.getKey()).append(": ").append(header.getValue()).append(LINE_SEPARATOR);
             }
 
-            sb.append("\nBody:\n").append(body);
+            sb.append(LINE_SEPARATOR).append("Response Body:").append(LINE_SEPARATOR).append(LINE_SEPARATOR).append(body);
 
             return sb.toString();
         }

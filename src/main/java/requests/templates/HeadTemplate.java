@@ -2,11 +2,11 @@ package requests.templates;
 
 import static core.ApiCall.*;
 
-public class GetTemplate {
+public class HeadTemplate {
 
     public static void main(String[] args) {
 
-        GET("")
+        HEAD("")
                 .header("", "")
                 .queryParam("", "")
                 .execute();

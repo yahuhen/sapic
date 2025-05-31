@@ -2,13 +2,12 @@ package requests.templates;
 
 import static core.ApiCall.*;
 
-public class GetTemplate {
+public class DeleteTemplate {
 
     public static void main(String[] args) {
 
-        GET("")
+        DELETE("")
                 .header("", "")
-                .queryParam("", "")
                 .execute();
     }
 }
